@@ -3,18 +3,29 @@ import os
 import time
 import re
 import struct
+import webbrowser
 from pathlib import Path
 from threading import Timer, Thread
 from flask import Flask, render_template, jsonify, request, Response
 
-# Ensure project root is in the python search path
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+# Handle PyInstaller frozen mode for module imports and resource paths
+if getattr(sys, 'frozen', False):
+    # PyInstaller bundles everything into sys._MEIPASS
+    _base_path = sys._MEIPASS
+    template_folder = os.path.join(_base_path, 'templates')
+    static_folder = os.path.join(_base_path, 'static')
+    sys.path.insert(0, _base_path)
+else:
+    template_folder = os.path.join(os.path.dirname(__file__), 'templates')
+    static_folder = os.path.join(os.path.dirname(__file__), 'static')
+    sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+
 from code_base.accelon import AccelonDB
 from opencc import OpenCC
 
 app = Flask(__name__, 
-            template_folder='templates',
-            static_folder='static')
+            template_folder=template_folder,
+            static_folder=static_folder)
 
 app.config["MAX_CONTENT_LENGTH"] = 250 * 1024 * 1024  # Support up to 250MB adb files
 
@@ -337,10 +348,18 @@ def heartbeat_route():
     return jsonify({"ok": True})
 
 
+def open_browser():
+    webbrowser.open_new("http://127.0.0.1:5001/")
+
 if __name__ == '__main__':
-    # Start the watchdog thread
-    watchdog = Thread(target=heartbeat_watchdog, daemon=True)
-    watchdog.start()
-    
-    # Start Flask
-    app.run(host='127.0.0.1', port=5001, debug=False)
+    if getattr(sys, 'frozen', False):
+        # Package execution mode: auto open browser, no debug
+        watchdog = Thread(target=heartbeat_watchdog, daemon=True)
+        watchdog.start()
+        Timer(1.0, open_browser).start()
+        app.run(host='127.0.0.1', port=5001, debug=False)
+    else:
+        # Development execution mode
+        watchdog = Thread(target=heartbeat_watchdog, daemon=True)
+        watchdog.start()
+        app.run(host='127.0.0.1', port=5001, debug=True)

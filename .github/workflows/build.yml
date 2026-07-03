@@ -29,7 +29,7 @@ jobs:
       - name: Build with PyInstaller
         run: |
           cd frontend
-          pyinstaller --onefile --noconsole --name "백과사전 검색기" --icon "../icons/icon.ico" --add-data "templates;templates" --add-data "static;static" --collect-data opencc --paths=".." app.py
+          pyinstaller --onefile --noconsole --name "백과사전 검색기" --icon "../icons/icon.ico" --add-data "templates;templates" --add-data "static;static" --add-data "../code_base;code_base" --collect-data opencc --hidden-import=opencc --hidden-import=code_base.accelon --paths=".." app.py
 
       - name: Upload Windows executable artifact
         uses: actions/upload-artifact@v4
