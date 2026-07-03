@@ -1,0 +1,251 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>사전 등록 — Accelon Reader</title>
+    <link rel="stylesheet" href="/static/style.css">
+    <style>
+        .tooltip-wrapper {
+            position: relative;
+            display: inline-block;
+            cursor: pointer;
+            margin-left: 6px;
+        }
+        .tooltip-icon {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 18px;
+            height: 18px;
+            border-radius: 50%;
+            background: #475569;
+            color: #ffffff;
+            font-size: 11px;
+            font-weight: bold;
+        }
+        .tooltip-content {
+            visibility: hidden;
+            width: 250px;
+            background-color: #0f172a;
+            color: #fff;
+            text-align: left;
+            border-radius: 6px;
+            padding: 10px;
+            position: absolute;
+            z-index: 100;
+            bottom: 125%;
+            left: 50%;
+            transform: translateX(-50%);
+            opacity: 0;
+            transition: opacity 0.2s;
+            font-size: 12px;
+            line-height: 1.4;
+            font-weight: normal;
+            border: 1px solid #334155;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        }
+        .tooltip-wrapper:hover .tooltip-content {
+            visibility: visible;
+            opacity: 1;
+        }
+    </style>
+</head>
+<body>
+    <div class="upload-container">
+        <div class="upload-card">
+            <!-- Initial View -->
+            <div id="upload-form-view">
+                <h2 class="card-title">
+                    새 사전 데이터 (.adb) 등록
+                    <span class="tooltip-wrapper">
+                        <span class="tooltip-icon">?</span>
+                        <span class="tooltip-content">Accelon 데이터베이스 파일(.adb)을 업로드하면 프로그램 내에 등록되어 즉시 검색 기능을 이용할 수 있습니다.</span>
+                    </span>
+                </h2>
+                <div class="drop-zone" id="drop-zone">
+                    <span class="drop-zone-icon">📁</span>
+                    <p class="drop-zone-text">여기에 adb 파일을 드래그 앤 드롭하거나 클릭하여 파일을 선택하세요.</p>
+                    <input type="file" id="file-input" class="file-input" accept=".adb">
+                    <div id="file-info" class="file-info"></div>
+                </div>
+                <div class="button-group">
+                    <button type="button" class="btn btn-primary" id="btn-upload" disabled>등록 시작</button>
+                    <a href="/" class="btn btn-secondary">취소</a>
+                </div>
+            </div>
+
+            <!-- Loading View -->
+            <div id="loading-view" class="status-container">
+                <div class="spinner"></div>
+                <p class="status-text" id="status-text">사전 파일을 등록하는 중입니다...</p>
+            </div>
+
+            <!-- Success View -->
+            <div id="success-view" class="success-container">
+                <span class="success-icon">✓</span>
+                <h3 class="success-title" id="success-title">등록 완료!</h3>
+                <p class="success-details" id="success-details">데이터 처리가 완료되었습니다.</p>
+                <div class="button-group">
+                    <a href="/" class="btn btn-primary">완료</a>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const dropZone = document.getElementById('drop-zone');
+        const fileInput = document.getElementById('file-input');
+        const fileInfo = document.getElementById('file-info');
+        const btnUpload = document.getElementById('btn-upload');
+        const uploadFormView = document.getElementById('upload-form-view');
+        const loadingView = document.getElementById('loading-view');
+        const successView = document.getElementById('success-view');
+        const statusText = document.getElementById('status-text');
+        const successDetails = document.getElementById('success-details');
+
+        let selectedFile = null;
+
+        // Drop zone interaction
+        dropZone.addEventListener('click', () => fileInput.click());
+
+        dropZone.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            dropZone.classList.add('dragover');
+        });
+
+        dropZone.addEventListener('dragleave', () => {
+            dropZone.classList.remove('dragover');
+        });
+
+        dropZone.addEventListener('drop', (e) => {
+            e.preventDefault();
+            dropZone.classList.remove('dragover');
+            
+            if (e.dataTransfer.files.length > 0) {
+                handleFileSelect(e.dataTransfer.files[0]);
+            }
+        });
+
+        fileInput.addEventListener('change', (e) => {
+            if (fileInput.files.length > 0) {
+                handleFileSelect(fileInput.files[0]);
+            }
+        });
+
+        function handleFileSelect(file) {
+            const ext = file.name.toLowerCase();
+            if (!ext.endsWith('.adb')) {
+                alert('Accelon 데이터베이스 파일(.adb)만 등록할 수 있습니다.');
+                return;
+            }
+            
+            selectedFile = file;
+            fileInfo.textContent = `선택된 파일: ${file.name} (${formatBytes(file.size)})`;
+            fileInfo.style.display = 'block';
+            btnUpload.disabled = false;
+        }
+
+        function formatBytes(bytes) {
+            if (bytes === 0) return '0 Bytes';
+            const k = 1024;
+            const sizes = ['Bytes', 'KB', 'MB'];
+            const i = Math.floor(Math.log(bytes) / Math.log(k));
+            return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+        }
+
+        // Upload action
+        btnUpload.addEventListener('click', async () => {
+            if (!selectedFile) return;
+
+            // Switch to loading
+            uploadFormView.style.display = 'none';
+            loadingView.style.display = 'block';
+            statusText.textContent = '데이터 처리 중... 잠시만 기다려주세요.';
+
+            const formData = new FormData();
+            formData.append('file', selectedFile);
+
+            try {
+                const response = await fetch('/api/upload', {
+                    method: 'POST',
+                    body: formData
+                });
+                const data = await response.json();
+
+                if (response.ok && data.ok) {
+                    loadingView.style.display = 'none';
+                    successView.style.display = 'block';
+                    successDetails.innerHTML = `데이터셋 이름: <strong>${data.dataset_name}</strong><br>총 <strong>${data.line_count.toLocaleString()}</strong>줄의 데이터를 성공적으로 로드하여 등록 완료했습니다.`;
+                } else {
+                    throw new Error(data.error || '등록 중 오류 발생');
+                }
+            } catch (err) {
+                alert(`오류: ${err.message}`);
+                loadingView.style.display = 'none';
+                uploadFormView.style.display = 'block';
+            }
+        });
+
+        // ==========================================
+        //  HEARTBEAT IMPLEMENTATION
+        // ==========================================
+        const workerCode = `
+            let timerId = null;
+            self.onmessage = function(e) {
+                if (e.data === 'start') {
+                    if (timerId) clearInterval(timerId);
+                    timerId = setInterval(() => {
+                        self.postMessage('tick');
+                    }, 5000);
+                } else if (e.data === 'stop') {
+                    if (timerId) clearInterval(timerId);
+                    timerId = null;
+                }
+            };
+        `;
+        const blob = new Blob([workerCode], { type: 'application/javascript' });
+        const workerUrl = URL.createObjectURL(blob);
+        const heartbeatWorker = new Worker(workerUrl);
+        
+        heartbeatWorker.postMessage('start');
+        
+        const clientId = 'client_' + Math.random().toString(36).substr(2, 9);
+        
+        async function sendHeartbeat(clientStatus) {
+            try {
+                await fetch('/api/heartbeat', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        client_id: clientId,
+                        state: clientStatus === 'active' ? 'visible' : 'hidden',
+                        timestamp: new Date().toISOString()
+                    })
+                });
+            } catch (err) {
+                console.error("Heartbeat error:", err);
+            }
+        }
+        
+        heartbeatWorker.onmessage = function(e) {
+            if (e.data === 'tick') {
+                sendHeartbeat(document.visibilityState === 'visible' ? 'active' : 'background');
+            }
+        };
+        
+        window.addEventListener('beforeunload', () => {
+            navigator.sendBeacon('/api/heartbeat', JSON.stringify({
+                client_id: clientId,
+                state: 'closed',
+                timestamp: new Date().toISOString()
+            }));
+        });
+        
+        document.addEventListener('visibilitychange', () => {
+            sendHeartbeat(document.visibilityState === 'visible' ? 'active' : 'background');
+        });
+        sendHeartbeat('active');
+    </script>
+</body>
+</html>

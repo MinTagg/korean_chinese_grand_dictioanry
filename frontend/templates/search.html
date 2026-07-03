@@ -1,0 +1,736 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title id="page-title">Accelon Database Reader</title>
+    <!-- Google Fonts for modern typography -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&family=Noto+Serif+SC:wght@400;600;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --primary-color: #0b63c5;
+            --primary-gradient: linear-gradient(135deg, #0f75e7 0%, #074da3 100%);
+            --bg-color: #f7f9fc;
+            --panel-bg: #ffffff;
+            --text-main: #2c3e50;
+            --text-muted: #7f8c8d;
+            --border-color: #e2e8f0;
+            --hover-bg: #edf2f7;
+            --accent-quote: #e2e8f0;
+            --accent-name: #27ae60;
+            --accent-book: #d35400;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text-main);
+            height: 100vh;
+            overflow: hidden;
+            display: flex;
+        }
+
+        /* Layout Structure */
+        .sidebar {
+            width: 380px;
+            min-width: 320px;
+            background-color: var(--panel-bg);
+            border-right: 1px solid var(--border-color);
+            display: flex;
+            flex-direction: column;
+            height: 100%;
+            box-shadow: 2px 0 10px rgba(0, 0, 0, 0.02);
+            z-index: 10;
+        }
+
+        .main-panel {
+            flex-grow: 1;
+            height: 100%;
+            background-color: var(--bg-color);
+            display: flex;
+            flex-direction: column;
+            overflow-y: auto;
+            padding: 40px;
+            position: relative;
+        }
+
+        /* Sidebar Header */
+        .sidebar-header {
+            background: var(--primary-gradient);
+            color: #ffffff;
+            padding: 20px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05);
+        }
+
+        .sidebar-header-top {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 5px;
+        }
+
+        .btn-back-home {
+            color: #ffffff;
+            text-decoration: none;
+            font-size: 20px;
+            font-weight: bold;
+            cursor: pointer;
+            padding: 5px 10px;
+            margin-left: -10px;
+            transition: opacity 0.2s;
+        }
+
+        .btn-back-home:hover {
+            opacity: 0.8;
+        }
+
+        .sidebar-header h1 {
+            font-family: 'Noto Serif SC', serif;
+            font-size: 24px;
+            font-weight: 700;
+            letter-spacing: 2px;
+            text-align: center;
+            flex-grow: 1;
+            margin-right: 20px; /* balance the back arrow */
+        }
+
+        .sidebar-header .subtitle {
+            font-size: 11px;
+            text-align: center;
+            opacity: 0.8;
+            margin-top: 5px;
+        }
+
+        /* Search Section */
+        .search-container {
+            padding: 15px;
+            border-bottom: 1px solid var(--border-color);
+            background-color: #fafbfc;
+        }
+
+        .search-box {
+            display: flex;
+            background: #ffffff;
+            border: 1px solid #cbd5e1;
+            border-radius: 8px;
+            overflow: hidden;
+            transition: border-color 0.2s, box-shadow 0.2s;
+        }
+
+        .search-box:focus-within {
+            border-color: var(--primary-color);
+            box-shadow: 0 0 0 3px rgba(11, 99, 197, 0.15);
+        }
+
+        .search-box input {
+            flex-grow: 1;
+            border: none;
+            outline: none;
+            padding: 12px 15px;
+            font-size: 15px;
+            font-family: inherit;
+        }
+
+        .search-box button {
+            background: none;
+            border: none;
+            padding: 0 15px;
+            cursor: pointer;
+            color: var(--primary-color);
+            font-weight: 600;
+            transition: opacity 0.2s;
+        }
+
+        .search-box button:hover {
+            opacity: 0.8;
+        }
+
+        /* Results List */
+        .results-container {
+            flex-grow: 1;
+            overflow-y: auto;
+            padding: 10px 0;
+        }
+
+        .result-item {
+            padding: 15px 20px;
+            border-bottom: 1px solid #f1f5f9;
+            cursor: pointer;
+            transition: background-color 0.2s;
+        }
+
+        .result-item:hover {
+            background-color: var(--hover-bg);
+        }
+
+        .result-item.active {
+            background-color: #eff6ff;
+            border-left: 4px solid var(--primary-color);
+        }
+
+        .result-item h3 {
+            font-family: 'Noto Serif SC', serif;
+            font-size: 18px;
+            font-weight: 600;
+            color: #0f172a;
+            margin-bottom: 5px;
+        }
+
+        .result-item p {
+            font-size: 13px;
+            color: var(--text-muted);
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .no-results {
+            padding: 40px 20px;
+            text-align: center;
+            color: var(--text-muted);
+            font-size: 14px;
+        }
+
+        /* Sidebar Footer / Mode selection */
+        .mode-tabs {
+            display: flex;
+            border-top: 1px solid var(--border-color);
+            background-color: #f8fafc;
+        }
+
+        .tab-btn {
+            flex: 1;
+            border: none;
+            background: none;
+            padding: 15px 0;
+            font-size: 13px;
+            font-weight: 500;
+            color: #64748b;
+            cursor: pointer;
+            text-align: center;
+            transition: color 0.2s, background-color 0.2s;
+            position: relative;
+        }
+
+        .tab-btn:hover {
+            color: var(--primary-color);
+            background-color: #f1f5f9;
+        }
+
+        .tab-btn.active {
+            color: var(--primary-color);
+            font-weight: 600;
+            background-color: #ffffff;
+        }
+
+        .tab-btn.active::after {
+            content: '';
+            position: absolute;
+            bottom: 0;
+            left: 15%;
+            width: 70%;
+            height: 3px;
+            background-color: var(--primary-color);
+            border-radius: 3px;
+        }
+
+        /* Right Detail Panel content styling */
+        .entry-container {
+            max-width: 800px;
+            margin: 0 auto;
+            background-color: var(--panel-bg);
+            border-radius: 12px;
+            box-shadow: 0 10px 25px rgba(0, 0, 0, 0.03);
+            padding: 45px;
+            border: 1px solid var(--border-color);
+        }
+
+        .entry-header {
+            border-bottom: 2px solid var(--border-color);
+            padding-bottom: 20px;
+            margin-bottom: 30px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .entry-title {
+            font-family: 'Noto Serif SC', serif;
+            font-size: 36px;
+            font-weight: 700;
+            color: #0f172a;
+        }
+
+        .entry-meta {
+            font-size: 12px;
+            color: var(--text-muted);
+        }
+
+        .entry-body {
+            font-family: 'Noto Serif SC', serif;
+            font-size: 18px;
+            line-height: 1.8;
+            color: #1e293b;
+        }
+
+        /* Custom styling for parsed XML tags */
+        .tag-word {
+            font-weight: 700;
+            color: var(--primary-color);
+        }
+
+        .tag-name {
+            color: var(--accent-name);
+            font-weight: 500;
+            border-bottom: 1px dashed var(--accent-name);
+        }
+
+        .tag-book {
+            color: var(--accent-book);
+            font-style: italic;
+        }
+
+        .tag-quote {
+            display: block;
+            margin: 15px 0;
+            padding: 12px 20px;
+            background-color: #f8fafc;
+            border-left: 4px solid var(--accent-quote);
+            border-radius: 0 8px 8px 0;
+            color: #334155;
+            font-size: 17px;
+        }
+
+        .tag-superscript {
+            vertical-align: super;
+            font-size: 11px;
+            color: var(--primary-color);
+            font-weight: 600;
+            margin-left: 2px;
+        }
+
+        .entry-image-container {
+            margin-top: 30px;
+            text-align: center;
+            background: #fafbfc;
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            padding: 20px;
+        }
+
+        .entry-image {
+            max-width: 100%;
+            height: auto;
+            border-radius: 4px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+        }
+
+        .entry-image-label {
+            margin-top: 10px;
+            font-size: 13px;
+            color: var(--text-muted);
+        }
+
+        /* Empty State */
+        .empty-state {
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            height: 100%;
+            color: var(--text-muted);
+            text-align: center;
+        }
+
+        .empty-state svg {
+            width: 80px;
+            height: 80px;
+            margin-bottom: 20px;
+            color: #cbd5e1;
+        }
+
+        .empty-state h2 {
+            font-size: 20px;
+            font-weight: 500;
+            margin-bottom: 8px;
+            color: #475569;
+        }
+
+        .empty-state p {
+            font-size: 14px;
+        }
+
+        /* Status indicator badge */
+        .status-badge {
+            position: fixed;
+            top: 15px;
+            right: 15px;
+            background: rgba(15, 23, 42, 0.8);
+            backdrop-filter: blur(8px);
+            color: #ffffff;
+            font-size: 11px;
+            padding: 6px 12px;
+            border-radius: 20px;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.05);
+            z-index: 100;
+        }
+
+        .status-dot {
+            width: 8px;
+            height: 8px;
+            background-color: #10b981; /* Green */
+            border-radius: 50%;
+            display: inline-block;
+        }
+
+        .status-dot.background {
+            background-color: #f59e0b; /* Yellow */
+        }
+    </style>
+</head>
+<body>
+
+    <!-- Heartbeat Status Badge -->
+    <div class="status-badge">
+        <span class="status-dot" id="status-dot"></span>
+        <span id="status-text">온라인</span>
+    </div>
+
+    <!-- Left Sidebar -->
+    <div class="sidebar">
+        <div class="sidebar-header">
+            <div class="sidebar-header-top">
+                <a href="/" class="btn-back-home">←</a>
+                <h1 id="sidebar-title">로딩 중...</h1>
+            </div>
+            <div class="subtitle" id="sidebar-subtitle">Accelon Search Engine Web Interface</div>
+        </div>
+
+        <div class="search-container">
+            <div class="search-box">
+                <input type="text" id="search-input" placeholder="검색어를 입력하세요 (예: 體夫)..." autocomplete="off">
+                <button id="search-btn">검색</button>
+            </div>
+        </div>
+
+        <div class="results-container" id="results-container">
+            <div class="no-results">검색 결과를 조회하려면 검색어를 입력하세요.</div>
+        </div>
+
+        <div class="mode-tabs">
+            <button class="tab-btn active" data-mode="all">전체</button>
+            <button class="tab-btn" data-mode="headword">조목</button>
+            <button class="tab-btn" data-mode="example">예문</button>
+        </div>
+    </div>
+
+    <!-- Right Main Panel -->
+    <div class="main-panel" id="main-panel">
+        <div class="empty-state" id="empty-state">
+            <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253"></path>
+            </svg>
+            <h2 id="empty-state-title">사전 검색기</h2>
+            <p>검색어를 입력하고 목록에서 항목을 선택하여 내용을 표시하세요.</p>
+        </div>
+        <div id="entry-view" style="display: none;">
+            <div class="entry-container">
+                <div class="entry-header">
+                    <div class="entry-title" id="entry-title">표제어</div>
+                    <div class="entry-meta" id="entry-meta">라인 번호</div>
+                </div>
+                <div class="entry-body" id="entry-body">
+                    내용 로딩 중...
+                </div>
+                <div class="entry-image-container" id="entry-image-container" style="display: none;">
+                    <img class="entry-image" id="entry-image" src="" alt="도해 일러스트">
+                    <div class="entry-image-label" id="entry-image-label">도해 일러스트</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Injected dataset name from Flask template context
+        const datasetName = "{{ dataset_name }}";
+        let currentMode = 'all';
+        let activeLineNum = null;
+
+        // DOM elements
+        const pageTitle = document.getElementById('page-title');
+        const sidebarTitle = document.getElementById('sidebar-title');
+        const sidebarSubtitle = document.getElementById('sidebar-subtitle');
+        const searchInput = document.getElementById('search-input');
+        const searchBtn = document.getElementById('search-btn');
+        const resultsContainer = document.getElementById('results-container');
+        const emptyState = document.getElementById('empty-state');
+        const emptyStateTitle = document.getElementById('empty-state-title');
+        const entryView = document.getElementById('entry-view');
+        const entryTitle = document.getElementById('entry-title');
+        const entryMeta = document.getElementById('entry-meta');
+        const entryBody = document.getElementById('entry-body');
+        const entryImageContainer = document.getElementById('entry-image-container');
+        const entryImage = document.getElementById('entry-image');
+        const entryImageLabel = document.getElementById('entry-image-label');
+        const tabBtns = document.querySelectorAll('.tab-btn');
+        const statusDot = document.getElementById('status-dot');
+        const statusText = document.getElementById('status-text');
+
+        // Fetch DB metadata on load
+        async function fetchDbInfo() {
+            try {
+                const response = await fetch(`/api/info/${encodeURIComponent(datasetName)}`);
+                const data = await response.json();
+                if (data.ok) {
+                    const displayName = data.dbcname || data.dbname || datasetName;
+                    pageTitle.textContent = `${displayName} — Accelon Reader`;
+                    sidebarTitle.textContent = displayName;
+                    sidebarSubtitle.textContent = `버전: ${data.version} | 표제어: ${data.linecount.toLocaleString()}개`;
+                    emptyStateTitle.textContent = displayName;
+                } else {
+                    sidebarTitle.textContent = datasetName;
+                }
+            } catch (err) {
+                console.error("DB info error:", err);
+                sidebarTitle.textContent = datasetName;
+            }
+        }
+        fetchDbInfo();
+
+        // Setup search triggers
+        searchBtn.addEventListener('click', performSearch);
+        searchInput.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') {
+                performSearch();
+            }
+        });
+
+        // Mode tab switching
+        tabBtns.forEach(btn => {
+            btn.addEventListener('click', () => {
+                tabBtns.forEach(b => b.classList.remove('active'));
+                btn.classList.add('active');
+                currentMode = btn.getAttribute('data-mode');
+                performSearch();
+            });
+        });
+
+        // Search logic
+        async function performSearch() {
+            const query = searchInput.value.trim();
+            if (!query) {
+                resultsContainer.innerHTML = '<div class="no-results">검색어를 입력하세요.</div>';
+                return;
+            }
+
+            resultsContainer.innerHTML = '<div class="no-results">검색 중...</div>';
+
+            try {
+                const response = await fetch(`/api/search/${encodeURIComponent(datasetName)}?q=${encodeURIComponent(query)}&mode=${currentMode}`);
+                const data = await response.json();
+                
+                if (data.length === 0) {
+                    resultsContainer.innerHTML = '<div class="no-results">검색 결과가 없습니다.</div>';
+                    return;
+                }
+
+                resultsContainer.innerHTML = '';
+                data.forEach(item => {
+                    const el = document.createElement('div');
+                    el.className = 'result-item';
+                    if (item.line_num === activeLineNum) {
+                        el.classList.add('active');
+                    }
+                    el.innerHTML = `
+                        <h3>${item.headword}</h3>
+                        <p>${item.preview}</p>
+                    `;
+                    el.addEventListener('click', () => selectEntry(item.line_num, el));
+                    resultsContainer.appendChild(el);
+                });
+            } catch (err) {
+                console.error("Search error:", err);
+                resultsContainer.innerHTML = '<div class="no-results">오류가 발생했습니다.</div>';
+            }
+        }
+
+        // Selection logic
+        async function selectEntry(lineNum, element) {
+            activeLineNum = lineNum;
+            document.querySelectorAll('.result-item').forEach(el => el.classList.remove('active'));
+            if (element) {
+                element.classList.add('active');
+            }
+
+            emptyState.style.display = 'none';
+            entryView.style.display = 'block';
+            entryBody.innerHTML = '로딩 중...';
+            entryImageContainer.style.display = 'none';
+
+            try {
+                const response = await fetch(`/api/entry/${encodeURIComponent(datasetName)}/${lineNum}`);
+                const data = await response.json();
+                renderEntry(data);
+            } catch (err) {
+                console.error("Load entry error:", err);
+                entryBody.innerHTML = '콘텐츠를 가져오는 도중 오류가 발생했습니다.';
+            }
+        }
+
+        // Formats XML syntax into beautiful HTML structure
+        function renderEntry(data) {
+            const raw = data.raw_content;
+            entryMeta.textContent = `라인 번호: ${data.line_num}`;
+
+            // Parse tags
+            let html = raw;
+
+            // Extract image reference if present inside <詞 f="image.png">
+            const imgMatch = raw.match(/<詞[^>]*f="([^"]+)"[^>]*>/);
+            if (imgMatch && imgMatch[1]) {
+                const imgFile = imgMatch[1];
+                entryImage.src = `/api/resource/${encodeURIComponent(datasetName)}/${encodeURIComponent(imgFile)}`;
+                entryImageLabel.textContent = `도해 일러스트: ${imgFile}`;
+                entryImageContainer.style.display = 'block';
+            }
+
+            // Style <詞> tag
+            html = html.replace(/<詞[^>]*>(.*?)<\/詞>/g, '<span class="tag-word">$1</span>');
+
+            // Style <_上標 n="X"/> or <_上標 n="X"></_上標>
+            html = html.replace(/<_-上標[^>]*n="([^"]+)"[^>]*\/>/g, '<sup class="tag-superscript">$1</sup>');
+            html = html.replace(/<_-上標[^>]*n="([^"]+)"[^>]*>(.*?)<\/_-上標>/g, '<sup class="tag-superscript">$1</sup>');
+
+            // Style name tag <_名>
+            html = html.replace(/<_-名[^>]*>(.*?)<\/_-名>/g, '<span class="tag-name">$1</span>');
+
+            // Style book title tag <_書>
+            html = html.replace(/<_-書[^>]*>(.*?)<\/_-書>/g, '<span class="tag-book">《$1》</span>');
+
+            // Convert quotations: “...” to citation blockquotes
+            html = html.replace(/“([^”]+)”/g, '<span class="tag-quote">“$1”</span>');
+
+            // Remove other remaining XML tags for cleanup
+            html = html.replace(/<[^>]+>/g, '');
+
+            entryBody.innerHTML = html;
+
+            // Extract pure headword for title
+            const hwMatch = raw.match(/<詞[^>]*>(.*?)<\/詞>/);
+            entryTitle.textContent = hwMatch ? hwMatch[1].replace(/<[^>]+>/g, '') : `Line ${data.line_num}`;
+
+            // Double click word selection event to search
+            entryBody.querySelectorAll('.tag-quote, .tag-name, .tag-book').forEach(el => {
+                el.addEventListener('dblclick', (e) => {
+                    const selText = window.getSelection().toString().trim();
+                    if (selText && selText.length <= 15) {
+                        searchInput.value = selText;
+                        performSearch();
+                        e.stopPropagation();
+                    }
+                });
+            });
+            entryBody.addEventListener('dblclick', () => {
+                const selText = window.getSelection().toString().trim();
+                if (selText && selText.length <= 15) {
+                    searchInput.value = selText;
+                    performSearch();
+                }
+            });
+        }
+
+        // ==========================================
+        //  HEARTBEAT IMPLEMENTATION (SLEEP SAFE)
+        // ==========================================
+
+        const workerCode = `
+            let timerId = null;
+            self.onmessage = function(e) {
+                if (e.data === 'start') {
+                    if (timerId) clearInterval(timerId);
+                    timerId = setInterval(() => {
+                        self.postMessage('tick');
+                    }, 5000);
+                } else if (e.data === 'stop') {
+                    if (timerId) clearInterval(timerId);
+                    timerId = null;
+                }
+            };
+        `;
+
+        const blob = new Blob([workerCode], { type: 'application/javascript' });
+        const workerUrl = URL.createObjectURL(blob);
+        const heartbeatWorker = new Worker(workerUrl);
+
+        heartbeatWorker.postMessage('start');
+
+        heartbeatWorker.onmessage = function(e) {
+            if (e.data === 'tick') {
+                sendHeartbeat(document.visibilityState === 'visible' ? 'active' : 'background');
+            }
+        };
+
+        // Generates random client ID for tracking session
+        const clientId = 'client_' + Math.random().toString(36).substr(2, 9);
+
+        async function sendHeartbeat(clientStatus) {
+            try {
+                const response = await fetch('/api/heartbeat', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        client_id: clientId,
+                        state: clientStatus === 'active' ? 'visible' : 'hidden',
+                        timestamp: new Date().toISOString()
+                    })
+                });
+                
+                const data = await response.json();
+                
+                // Update UI badge
+                if (clientStatus === 'active') {
+                    statusDot.className = 'status-dot';
+                    statusText.textContent = '온라인 (활성)';
+                } else {
+                    statusDot.className = 'status-dot background';
+                    statusText.textContent = '온라인 (백그라운드)';
+                }
+            } catch (err) {
+                console.error("Heartbeat transmission error:", err);
+                statusDot.className = 'status-dot background';
+                statusDot.style.backgroundColor = '#ef4444';
+                statusText.textContent = '통신 실패';
+            }
+        }
+
+        // Notify closed status on unload
+        window.addEventListener('beforeunload', () => {
+            navigator.sendBeacon('/api/heartbeat', JSON.stringify({
+                client_id: clientId,
+                state: 'closed',
+                timestamp: new Date().toISOString()
+            }));
+        });
+
+        document.addEventListener('visibilitychange', () => {
+            const state = document.visibilityState === 'visible' ? 'active' : 'background';
+            sendHeartbeat(state);
+        });
+
+        sendHeartbeat('active');
+    </script>
+</body>
+</html>
