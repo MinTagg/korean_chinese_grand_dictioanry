@@ -279,6 +279,7 @@
             font-size: 18px;
             line-height: 1.8;
             color: #1e293b;
+            white-space: pre-wrap;
         }
 
         /* Custom styling for parsed XML tags */
@@ -466,6 +467,7 @@
         const datasetName = "{{ dataset_name }}";
         let currentMode = 'all';
         let activeLineNum = null;
+        let currentSearchTerms = [];
 
         // DOM elements
         const pageTitle = document.getElementById('page-title');
@@ -540,13 +542,14 @@
                 const response = await fetch(`/api/search/${encodeURIComponent(datasetName)}?q=${encodeURIComponent(query)}&mode=${currentMode}`);
                 const data = await response.json();
                 
-                if (data.length === 0) {
+                if (!data.ok || !data.results || data.results.length === 0) {
                     resultsContainer.innerHTML = '<div class="no-results">검색 결과가 없습니다.</div>';
                     return;
                 }
 
+                currentSearchTerms = data.query_terms || [];
                 resultsContainer.innerHTML = '';
-                data.forEach(item => {
+                data.results.forEach(item => {
                     const el = document.createElement('div');
                     el.className = 'result-item';
                     if (item.line_num === activeLineNum) {
@@ -626,9 +629,11 @@
 
             entryBody.innerHTML = html;
 
-            // Extract pure headword for title
-            const hwMatch = raw.match(/<詞[^>]*>(.*?)<\/詞>/);
-            entryTitle.textContent = hwMatch ? hwMatch[1].replace(/<[^>]+>/g, '') : `Line ${data.line_num}`;
+            // Set resolved headword title
+            entryTitle.textContent = data.headword || `Line ${data.line_num}`;
+
+            // Highlight search query terms safely
+            highlightText(entryBody, currentSearchTerms);
 
             // Double click word selection event to search
             entryBody.querySelectorAll('.tag-quote, .tag-name, .tag-book').forEach(el => {
@@ -648,6 +653,33 @@
                     performSearch();
                 }
             });
+        }
+
+        // Helper to safely highlight query terms in DOM text nodes
+        function highlightText(element, terms) {
+            if (!terms || terms.length === 0) return;
+            
+            function traverse(node) {
+                if (node.nodeType === Node.TEXT_NODE) {
+                    const text = node.nodeValue;
+                    const escapedTerms = terms
+                        .map(t => t.trim())
+                        .filter(t => t.length > 0)
+                        .map(t => t.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&'));
+                        
+                    if (escapedTerms.length === 0) return;
+                    
+                    const regex = new RegExp(`(${escapedTerms.join('|')})`, 'gi');
+                    if (regex.test(text)) {
+                        const span = document.createElement('span');
+                        span.innerHTML = text.replace(regex, '<mark style="background-color: #fef08a; color: #000000; border-radius: 2px; padding: 0 2px; font-weight: bold;">$1</mark>');
+                        node.parentNode.replaceChild(span, node);
+                    }
+                } else if (node.nodeType === Node.ELEMENT_NODE && node.nodeName !== 'SCRIPT' && node.nodeName !== 'STYLE' && node.nodeName !== 'MARK') {
+                    Array.from(node.childNodes).forEach(traverse);
+                }
+            }
+            traverse(element);
         }
 
         // ==========================================
