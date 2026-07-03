@@ -11,7 +11,6 @@ from flask import Flask, render_template, jsonify, request, Response
 
 # Handle PyInstaller frozen mode for module imports and resource paths
 if getattr(sys, 'frozen', False):
-    # PyInstaller bundles everything into sys._MEIPASS
     _base_path = sys._MEIPASS
     template_folder = os.path.join(_base_path, 'templates')
     static_folder = os.path.join(_base_path, 'static')
@@ -28,9 +27,61 @@ app = Flask(__name__,
             template_folder=template_folder,
             static_folder=static_folder)
 
-app.config["MAX_CONTENT_LENGTH"] = 250 * 1024 * 1024  # Support up to 250MB adb files
+app.config["MAX_CONTENT_LENGTH"] = 250 * 1024 * 1024
 
-# Determine PROGRAM_DIR, DB, and Files paths
+# ==========================================
+#  TRADITIONAL → JAPANESE SHINJITAI MAP
+# ==========================================
+T2JP_MAP = {
+    '圖': '図', '國': '国', '學': '学', '體': '体', '醫': '医',
+    '廣': '広', '齒': '歯', '靈': '霊', '藝': '芸', '寶': '宝',
+    '變': '変', '辯': '弁', '關': '関', '氣': '気', '區': '区',
+    '實': '実', '單': '単', '黨': '党', '對': '対', '圓': '円',
+    '當': '当', '點': '点', '傳': '伝', '團': '団', '發': '発',
+    '號': '号', '歸': '帰', '觀': '観', '廳': '庁', '繼': '継',
+    '經': '経', '權': '権', '勞': '労', '類': '類', '滿': '満',
+    '賣': '売', '腦': '脳', '齊': '斉', '輕': '軽', '權': '権',
+    '榮': '栄', '殘': '残', '聲': '声', '釋': '釈', '壽': '寿',
+    '數': '数', '雙': '双', '歲': '歳', '鐵': '鉄', '聯': '連',
+    '萬': '万', '圍': '囲', '獻': '献', '鄉': '郷', '續': '続',
+    '營': '営', '櫻': '桜', '應': '応', '豐': '豊', '譽': '誉',
+    '與': '与', '預': '預', '戰': '戦', '證': '証', '莊': '荘',
+    '總': '総', '從': '従', '蟲': '虫', '晝': '昼', '佛': '仏',
+    '來': '来', '兩': '両', '禮': '礼', '歷': '歴', '亂': '乱',
+    '龍': '竜', '樓': '楼', '錄': '録', '獨': '独', '讀': '読',
+    '樂': '楽', '藥': '薬', '譯': '訳', '寫': '写', '緣': '縁',
+    '產': '産', '會': '会', '繪': '絵', '惡': '悪', '壓': '圧',
+    '圈': '圏', '劍': '剣', '險': '険', '驗': '験', '嚴': '厳',
+    '參': '参', '絲': '糸', '條': '条', '稱': '称', '層': '層',
+    '遲': '遅', '鑄': '鋳', '廢': '廃', '寬': '寛', '卷': '巻',
+    '擴': '拡', '覺': '覚', '擔': '担', '斷': '断', '辭': '辞',
+    '屬': '属', '飛': '飛', '佛': '仏', '拂': '払', '歐': '欧',
+    '穩': '穏', '溫': '温', '價': '価', '假': '仮', '畫': '画',
+    '壞': '壊', '懷': '懐', '樓': '楼', '觸': '触', '邊': '辺',
+    '濕': '湿', '獸': '獣', '處': '処', '鹽': '塩', '黑': '黒',
+    '德': '徳', '收': '収', '狀': '状', '勸': '勧', '將': '将',
+    '專': '専', '轉': '転', '節': '節', '絕': '絶', '遞': '逓',
+    '鄰': '隣', '爐': '炉', '濱': '浜', '瀨': '瀬', '隨': '随',
+    '髓': '髄', '覽': '覧', '臺': '台', '澤': '沢', '燈': '灯',
+    '螢': '蛍', '營': '営', '蠶': '蚕', '齡': '齢', '聽': '聴',
+}
+
+# Create Japanese Shinjitai to Traditional Chinese map automatically
+JP2T_MAP = {v: k for k, v in T2JP_MAP.items()}
+
+def convert_t2jp(text: str) -> str:
+    """Converts Traditional Chinese characters to Japanese Shinjitai using built-in mapping."""
+    return ''.join(T2JP_MAP.get(c, c) for c in text)
+
+def convert_jp2t(text: str) -> str:
+    """Converts Japanese Shinjitai characters to Traditional Chinese using built-in mapping."""
+    return ''.join(JP2T_MAP.get(c, c) for c in text)
+
+
+# ==========================================
+#  PATHS AND DIRECTORIES
+# ==========================================
+
 if getattr(sys, 'frozen', False):
     PROGRAM_DIR = Path(sys.executable).resolve().parent
 else:
@@ -46,7 +97,7 @@ def ensure_dirs():
     FILES_DIR.mkdir(parents=True, exist_ok=True)
     DB_ROOT_DIR.mkdir(parents=True, exist_ok=True)
 
-# Cache for AccelonDB instances (only used for resource/image extraction on demand)
+# Cache for AccelonDB instances (only used for resource/image extraction)
 loaded_adbs = {}
 
 def get_adb_instance(dataset_name: str) -> AccelonDB:
@@ -62,8 +113,13 @@ def get_sqlite_path(dataset_name: str) -> Path:
     """Returns the path to the SQLite file for the given dataset."""
     return DB_ROOT_DIR / dataset_name / "data.sqlite"
 
+
+# ==========================================
+#  SQLITE DATABASE BUILDING (ENTRY-BASED)
+# ==========================================
+
 def build_sqlite_db(dataset_name: str):
-    """Parses .adb dictionary and builds a fully indexed SQLite database in under 5 seconds."""
+    """Parses .adb dictionary and builds an entry-grouped SQLite database."""
     adb_path = FILES_DIR / f"{dataset_name}.adb"
     if not adb_path.exists():
         raise FileNotFoundError(f"Database file not found: {adb_path}")
@@ -89,33 +145,63 @@ def build_sqlite_db(dataset_name: str):
         except Exception as e:
             print(f"Failed to delete existing database: {e}")
             
-    # Process headwords for line parent grouping
+    # Group lines into entries by headword
     headword_pattern = re.compile(r'<_*(?:-)*詞[^>]*>(.*?)</_*(?:-)*詞>')
     def strip_xml_tags(text):
         return re.sub(r'<[^>]+>', '', text)
         
+    entries = []  # list of (headword, start_line, end_line, full_content)
     current_headword = None
-    current_headword_line = None
+    current_start_line = None
+    current_lines_buf = []
     
-    insert_data = []
     for idx, line in enumerate(db_lines):
         line_num = idx + 1
         m = headword_pattern.search(line)
-        is_hw = 0
         if m:
             hw = strip_xml_tags(m.group(1))
             if hw:
+                # Flush previous entry
+                if current_headword is not None and current_lines_buf:
+                    entries.append((
+                        current_headword,
+                        current_start_line,
+                        line_num - 1,
+                        '\n'.join(current_lines_buf)
+                    ))
                 current_headword = hw
-                current_headword_line = line_num
-                is_hw = 1
-        insert_data.append((
-            line_num,
-            current_headword,
-            current_headword_line,
-            line,
-            is_hw
-        ))
+                current_start_line = line_num
+                current_lines_buf = [line]
+                continue
         
+        # Accumulate lines to current entry
+        if current_headword is not None:
+            current_lines_buf.append(line)
+        else:
+            # Lines before first headword → orphan entry
+            if not entries and current_lines_buf:
+                pass  # Accumulate
+            current_lines_buf.append(line)
+    
+    # Flush last entry
+    if current_headword is not None and current_lines_buf:
+        entries.append((
+            current_headword,
+            current_start_line,
+            len(db_lines),
+            '\n'.join(current_lines_buf)
+        ))
+    elif current_lines_buf:
+        # Orphan lines before first headword
+        entries.insert(0, (
+            "(프롤로그)",
+            1,
+            (current_start_line or len(db_lines)) - 1,
+            '\n'.join(current_lines_buf)
+        ))
+    
+    print(f"Grouped into {len(entries):,} entries in {time.time() - start_time:.2f}s.")
+    
     # Write to SQLite
     conn = sqlite3.connect(str(sqlite_path))
     try:
@@ -124,12 +210,12 @@ def build_sqlite_db(dataset_name: str):
         conn.execute("PRAGMA cache_size = 100000;")
         
         conn.execute("""
-        CREATE TABLE IF NOT EXISTS lines (
-            line_number INTEGER PRIMARY KEY,
+        CREATE TABLE IF NOT EXISTS entries (
+            entry_id INTEGER PRIMARY KEY AUTOINCREMENT,
             headword TEXT,
-            headword_line INTEGER,
-            content TEXT,
-            is_headword INTEGER
+            start_line INTEGER,
+            end_line INTEGER,
+            full_content TEXT
         );
         """)
         
@@ -140,30 +226,30 @@ def build_sqlite_db(dataset_name: str):
         );
         """)
         
-        conn.execute("CREATE INDEX IF NOT EXISTS idx_lines_headword ON lines(headword);")
-        conn.execute("CREATE INDEX IF NOT EXISTS idx_lines_headword_line ON lines(headword_line);")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_entries_headword ON entries(headword);")
         
-        # Insert metadata parameters
+        # Insert metadata
         metadata_vals = [
             ("dbname", db.dbname),
             ("dbcname", db.dbcname),
             ("version", str(db.version)),
             ("linecount", str(db.linecount)),
             ("tagcount", str(db.tagcount)),
-            ("tokencount", str(db.tokencount))
+            ("tokencount", str(db.tokencount)),
+            ("entry_count", str(len(entries)))
         ]
         conn.executemany("INSERT OR REPLACE INTO metadata (key, value) VALUES (?, ?)", metadata_vals)
         
-        # Batch insert lines in chunks
+        # Batch insert entries
         chunk_size = 50000
-        for i in range(0, len(insert_data), chunk_size):
+        for i in range(0, len(entries), chunk_size):
             conn.executemany(
-                "INSERT INTO lines (line_number, headword, headword_line, content, is_headword) VALUES (?, ?, ?, ?, ?)",
-                insert_data[i:i+chunk_size]
+                "INSERT INTO entries (headword, start_line, end_line, full_content) VALUES (?, ?, ?, ?)",
+                entries[i:i+chunk_size]
             )
             
         conn.commit()
-        print(f"SQLite DB built successfully for {dataset_name} in {time.time() - start_time:.2f}s.")
+        print(f"SQLite DB built successfully for {dataset_name}: {len(entries):,} entries in {time.time() - start_time:.2f}s.")
     except Exception as e:
         conn.rollback()
         if sqlite_path.exists():
@@ -239,33 +325,26 @@ def upload_file():
 
     try:
         file.save(adb_path)
-        
-        # Build the SQLite DB immediately
         build_sqlite_db(dataset_name)
         
-        # Retrieve line count from SQLite
         conn = get_db_connection(dataset_name)
-        row = conn.execute("SELECT COUNT(*) FROM lines").fetchone()
-        line_count = row[0]
+        row = conn.execute("SELECT COUNT(*) FROM entries").fetchone()
+        entry_count = row[0]
         conn.close()
         
         return jsonify({
             "ok": True,
             "dataset_name": dataset_name,
-            "line_count": line_count
+            "entry_count": entry_count
         })
     except Exception as e:
         if adb_path.exists():
-            try:
-                adb_path.unlink()
-            except:
-                pass
+            try: adb_path.unlink()
+            except: pass
         sqlite_path = get_sqlite_path(dataset_name)
         if sqlite_path.exists():
-            try:
-                sqlite_path.unlink()
-            except:
-                pass
+            try: sqlite_path.unlink()
+            except: pass
         return jsonify({"ok": False, "error": f"사전 데이터 구성 중 오류 발생: {str(e)}"}), 500
 
 
@@ -305,7 +384,8 @@ def api_info(dataset_name):
             "version": int(meta.get("version", 0)),
             "linecount": int(meta.get("linecount", 0)),
             "tagcount": int(meta.get("tagcount", 0)),
-            "tokencount": int(meta.get("tokencount", 0))
+            "tokencount": int(meta.get("tokencount", 0)),
+            "entry_count": int(meta.get("entry_count", 0))
         })
     except Exception as e:
         return jsonify({"ok": False, "error": str(e)}), 500
@@ -313,7 +393,7 @@ def api_info(dataset_name):
 
 @app.route('/api/search/<dataset_name>')
 def api_search(dataset_name):
-    """Performs space-separated AND search with fallback on a specific dictionary."""
+    """Performs space-separated AND search with 3-tier fallback on entries table."""
     query = request.args.get('q', '').strip()
     mode = request.args.get('mode', 'all')
     limit = int(request.args.get('limit', '50'))
@@ -324,32 +404,33 @@ def api_search(dataset_name):
     subqueries = [sq for sq in query.split() if sq]
     if not subqueries:
         return jsonify({"ok": True, "results": [], "query_terms": []})
-        
+    
+    headword_pattern = re.compile(r'<_*(?:-)*詞[^>]*>(.*?)</_*(?:-)*詞>')
+    quote_pattern = re.compile(r'[\u201c\u2018\u300c\u300e]([^\u201d\u2019\u300d\u300f]+)[\u201d\u2019\u300d\u300f]')
+    
+    def strip_xml_tags(text):
+        return re.sub(r'<[^>]+>', '', text)
+    
     def perform_search_sqlite(search_subqueries):
         conn = get_db_connection(dataset_name)
         cur = conn.cursor()
         
         if mode == 'headword':
-            sql = "SELECT line_number, headword, headword_line, content FROM lines WHERE " + " AND ".join(["headword LIKE ?" for _ in search_subqueries])
+            sql = "SELECT entry_id, headword, full_content FROM entries WHERE " + \
+                  " AND ".join(["headword LIKE ?" for _ in search_subqueries])
             params = [f"%{q}%" for q in search_subqueries]
         else:
-            sql = "SELECT line_number, headword, headword_line, content FROM lines WHERE " + " AND ".join(["content LIKE ?" for _ in search_subqueries])
+            sql = "SELECT entry_id, headword, full_content FROM entries WHERE " + \
+                  " AND ".join(["full_content LIKE ?" for _ in search_subqueries])
             params = [f"%{q}%" for q in search_subqueries]
             
         cur.execute(sql, params)
         
         results = []
-        headword_pattern = re.compile(r'<_*(?:-)*詞[^>]*>(.*?)</_*(?:-)*詞>')
-        quote_pattern = re.compile(r'[“‘「『]([^”’」』]+)[”’」』]')
-        
-        def strip_xml_tags(text):
-            return re.sub(r'<[^>]+>', '', text)
-            
         for row in cur:
-            line_num = row['line_number']
+            entry_id = row['entry_id']
             headword = row['headword']
-            headword_line = row['headword_line']
-            content = row['content']
+            content = row['full_content']
             
             is_match = False
             if mode == 'all':
@@ -357,15 +438,14 @@ def api_search(dataset_name):
             elif mode == 'headword':
                 is_match = True
             elif mode == 'example':
-                line_no_hw = headword_pattern.sub('', content)
-                quotes = [strip_xml_tags(m.group(1)) for m in quote_pattern.finditer(line_no_hw)]
+                content_no_hw = headword_pattern.sub('', content)
+                quotes = [strip_xml_tags(m.group(1)) for m in quote_pattern.finditer(content_no_hw)]
                 is_match = any(all(subq in q for subq in search_subqueries) for q in quotes)
                 
             if is_match:
-                hw_display = headword if line_num == headword_line else f"{headword} (Line {line_num})"
                 results.append({
-                    'line_num': line_num,
-                    'headword': hw_display or f"Line {line_num}",
+                    'entry_id': entry_id,
+                    'headword': headword or f"Entry {entry_id}",
                     'preview': strip_xml_tags(content)[:150]
                 })
                 if len(results) >= limit:
@@ -376,7 +456,7 @@ def api_search(dataset_name):
     try:
         results = perform_search_sqlite(subqueries)
         
-        # Try OpenCC fallback if no results found
+        # Tier 2: OpenCC t2s (Traditional → Simplified) fallback
         if not results:
             try:
                 cc = OpenCC('t2s')
@@ -385,20 +465,34 @@ def api_search(dataset_name):
                 if converted_subqueries != subqueries:
                     results = perform_search_sqlite(converted_subqueries)
             except Exception as e:
-                print(f"Fallback conversion error: {e}")
+                print(f"t2s fallback conversion error: {e}")
                 
-        # Generate terms list for query highlighting (including both Traditional/Simplified variants)
+        # Tier 3: T2JP (Traditional → Japanese Shinjitai) fallback
+        # If user searches '図' (Japanese), we convert it to '圖' (Traditional) to find matches in DB
+        if not results:
+            try:
+                jp_query = convert_jp2t(query)
+                jp_subqueries = [sq for sq in jp_query.split() if sq]
+                if jp_subqueries != subqueries:
+                    results = perform_search_sqlite(jp_subqueries)
+            except Exception as e:
+                print(f"t2jp fallback conversion error: {e}")
+                
+        # Generate highlight terms (original + simplified + traditional + japanese variants)
         highlight_terms = list(subqueries)
         try:
             cc_t2s = OpenCC('t2s')
             cc_s2t = OpenCC('s2t')
             for q in subqueries:
+                # Add simplified/traditional conversions
                 s_val = cc_t2s.convert(q)
                 t_val = cc_s2t.convert(q)
-                if s_val not in highlight_terms:
-                    highlight_terms.append(s_val)
-                if t_val not in highlight_terms:
-                    highlight_terms.append(t_val)
+                # Add Japanese / Traditional Japanese conversions
+                jp_t_val = convert_jp2t(q)
+                jp_s_val = convert_t2jp(q)
+                for val in [s_val, t_val, jp_t_val, jp_s_val]:
+                    if val not in highlight_terms:
+                        highlight_terms.append(val)
         except Exception as e:
             print(f"Highlight terms generation error: {e}")
             
@@ -411,56 +505,26 @@ def api_search(dataset_name):
         return jsonify({"ok": False, "error": str(e)}), 500
 
 
-@app.route('/api/entry/<dataset_name>/<int:line_num>')
-def api_entry(dataset_name, line_num):
-    """Retrieves full entry paragraph (from matched headword to before next headword) using SQLite."""
+@app.route('/api/entry/<dataset_name>/<int:entry_id>')
+def api_entry(dataset_name, entry_id):
+    """Retrieves the full entry content by entry_id from entries table."""
     try:
         conn = get_db_connection(dataset_name)
-        cur = conn.cursor()
-        
-        # Find headword_line for the requested line_num
-        row = cur.execute(
-            "SELECT headword, headword_line FROM lines WHERE line_number = ?",
-            (line_num,)
+        row = conn.execute(
+            "SELECT entry_id, headword, start_line, end_line, full_content FROM entries WHERE entry_id = ?",
+            (entry_id,)
         ).fetchone()
-        
-        if not row:
-            conn.close()
-            return jsonify({'error': 'Line not found'}), 404
-            
-        headword = row['headword']
-        headword_line = row['headword_line']
-        
-        # Find next headword line
-        next_hw_row = cur.execute(
-            "SELECT MIN(line_number) as next_hw FROM lines WHERE line_number > ? AND is_headword = 1",
-            (headword_line,)
-        ).fetchone()
-        
-        next_headword_line = next_hw_row['next_hw']
-        
-        # Retrieve all lines belonging to this entry block
-        if next_headword_line:
-            lines_rows = cur.execute(
-                "SELECT content FROM lines WHERE line_number >= ? AND line_number < ? ORDER BY line_number ASC",
-                (headword_line, next_headword_line)
-            ).fetchall()
-        else:
-            lines_rows = cur.execute(
-                "SELECT content FROM lines WHERE line_number >= ? ORDER BY line_number ASC",
-                (headword_line,)
-            ).fetchall()
-            
         conn.close()
         
-        # Concatenate line contents
-        full_content = "\n".join([r['content'] for r in lines_rows])
-        hw_display = headword if line_num == headword_line else f"{headword} (Line {line_num})"
-        
+        if not row:
+            return jsonify({'error': 'Entry not found'}), 404
+            
         return jsonify({
-            'line_num': line_num,
-            'headword': hw_display or f"Line {line_num}",
-            'raw_content': full_content
+            'entry_id': row['entry_id'],
+            'headword': row['headword'],
+            'start_line': row['start_line'],
+            'end_line': row['end_line'],
+            'raw_content': row['full_content']
         })
     except Exception as e:
         return jsonify({'error': str(e)}), 500
@@ -491,15 +555,14 @@ first_heartbeat_received = False
 no_clients_since = None
 
 def heartbeat_watchdog():
-    """Autoclose daemon checking heartbeat logs, matching kjj app structure."""
+    """Autoclose daemon checking heartbeat logs."""
     global first_heartbeat_received, no_clients_since
-    time.sleep(25) # Initial boot grace period
+    time.sleep(25)
     while True:
         time.sleep(2)
         now = time.time()
         
         if not first_heartbeat_received:
-            # Shutdown if browser never registers within 35s of server startup
             if now - startup_time > 35:
                 print("[WATCHDOG] Initial heartbeat timeout. Shutting down server.")
                 os._exit(0)
@@ -509,7 +572,7 @@ def heartbeat_watchdog():
         for cid, info in list(clients.items()):
             if info["state"] == "visible" and now - info["last_seen"] > 15:
                 del clients[cid]
-            elif info["state"] == "hidden" and now - info["last_seen"] > 86400: # 24h
+            elif info["state"] == "hidden" and now - info["last_seen"] > 86400:
                 del clients[cid]
             elif info["state"] == "closed" and now - info["last_seen"] > 10:
                 del clients[cid]
@@ -546,15 +609,23 @@ def heartbeat_route():
 def open_browser():
     webbrowser.open_new("http://127.0.0.1:5001/")
 
+def start_watchdog():
+    """Starts the heartbeat watchdog thread. Must be called after startup_time is set."""
+    global startup_time
+    startup_time = time.time()
+    if os.environ.get('DISABLE_WATCHDOG') == 'true':
+        print("[WATCHDOG] Disabled by environment variable.")
+        return
+    watchdog = Thread(target=heartbeat_watchdog, daemon=True)
+    watchdog.start()
+
 if __name__ == '__main__':
     if getattr(sys, 'frozen', False):
-        # Package execution mode: auto open browser, no debug
-        watchdog = Thread(target=heartbeat_watchdog, daemon=True)
-        watchdog.start()
+        start_watchdog()
         Timer(1.0, open_browser).start()
         app.run(host='127.0.0.1', port=5001, debug=False)
     else:
-        # Development execution mode
-        watchdog = Thread(target=heartbeat_watchdog, daemon=True)
-        watchdog.start()
+        is_reloader_child = os.environ.get('WERKZEUG_RUN_MAIN') == 'true'
+        if is_reloader_child:
+            start_watchdog()
         app.run(host='127.0.0.1', port=5001, debug=True)

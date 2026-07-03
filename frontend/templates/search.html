@@ -466,7 +466,7 @@
         // Injected dataset name from Flask template context
         const datasetName = "{{ dataset_name }}";
         let currentMode = 'all';
-        let activeLineNum = null;
+        let activeEntryId = null;
         let currentSearchTerms = [];
 
         // DOM elements
@@ -552,14 +552,14 @@
                 data.results.forEach(item => {
                     const el = document.createElement('div');
                     el.className = 'result-item';
-                    if (item.line_num === activeLineNum) {
+                    if (item.entry_id === activeEntryId) {
                         el.classList.add('active');
                     }
                     el.innerHTML = `
                         <h3>${item.headword}</h3>
                         <p>${item.preview}</p>
                     `;
-                    el.addEventListener('click', () => selectEntry(item.line_num, el));
+                    el.addEventListener('click', () => selectEntry(item.entry_id, el));
                     resultsContainer.appendChild(el);
                 });
             } catch (err) {
@@ -569,8 +569,8 @@
         }
 
         // Selection logic
-        async function selectEntry(lineNum, element) {
-            activeLineNum = lineNum;
+        async function selectEntry(entryId, element) {
+            activeEntryId = entryId;
             document.querySelectorAll('.result-item').forEach(el => el.classList.remove('active'));
             if (element) {
                 element.classList.add('active');
@@ -582,7 +582,7 @@
             entryImageContainer.style.display = 'none';
 
             try {
-                const response = await fetch(`/api/entry/${encodeURIComponent(datasetName)}/${lineNum}`);
+                const response = await fetch(`/api/entry/${encodeURIComponent(datasetName)}/${entryId}`);
                 const data = await response.json();
                 renderEntry(data);
             } catch (err) {
@@ -594,7 +594,7 @@
         // Formats XML syntax into beautiful HTML structure
         function renderEntry(data) {
             const raw = data.raw_content;
-            entryMeta.textContent = `라인 번호: ${data.line_num}`;
+            entryMeta.textContent = `조목 ID: ${data.entry_id} | 라인 범위: ${data.start_line}–${data.end_line}`;
 
             // Parse tags
             let html = raw;
